@@ -1,4 +1,17 @@
 const TelegramBot = require('node-telegram-bot-api');
+const express = require('express');
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Простой веб-сервер для Render
+app.get('/', (req, res) => {
+  res.send('🤖 Zekiro Faceit Bot is running!');
+});
+
+app.listen(port, () => {
+  console.log(`🚀 Server running on port ${port}`);
+});
 
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
@@ -48,7 +61,6 @@ bot.on('callback_query', (callbackQuery) => {
   const data = callbackQuery.data;
   const user = users[chatId];
 
-  // Ответим на callback чтобы убрать "часики" у кнопки
   bot.answerCallbackQuery(callbackQuery.id);
 
   if (user && user.state === 'completed') {
@@ -180,7 +192,7 @@ bot.on('message', (msg) => {
     if (user.friendAction) {
       handleFriendActions(msg);
     } else {
-      bot.sendMessage(chatId, 'Используйте кнопки меню или команды');
+      bot.sendMessage(chatId, 'Используйте кнопки меню 📱');
     }
   } else {
     handleRegistration(msg);
@@ -257,4 +269,4 @@ bot.onText(/\/data/, (msg) => {
   }
 });
 
-console.log('🤖 Бот запущен с inline-кнопками!');
+console.log('🤖 Бот запущен с inline-кнопками и веб-сервером!');
