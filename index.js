@@ -1,34 +1,10 @@
 const TelegramBot = require('node-telegram-bot-api');
-const fs = require('fs');
 
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
+// Храним данные в памяти (вместо файлов)
 let users = {};
-
-// Безопасная загрузка данных
-try {
-  if (fs.existsSync('users.json')) {
-    const data = fs.readFileSync('users.json', 'utf8');
-    if (data && data.trim() !== '') {
-      users = JSON.parse(data);
-    }
-  } else {
-    // Создаем файл если его нет
-    fs.writeFileSync('users.json', '{}');
-  }
-} catch (e) {
-  console.log('Создаем новый файл users.json');
-  fs.writeFileSync('users.json', '{}');
-}
-
-function saveUsers() {
-  try {
-    fs.writeFileSync('users.json', JSON.stringify(users, null, 2));
-  } catch (e) {
-    console.log('Ошибка сохранения файла:', e.message);
-  }
-}
 
 // Проверки
 function isValidNickname(nickname) {
@@ -72,7 +48,6 @@ bot.onText(/\/start/, (msg) => {
       state: 'awaiting_nickname',
       friends: []
     };
-    saveUsers();
     
     bot.sendMessage(chatId, `🎮 Привет, ${username}!\n\nНапишите свой игровой nickname:\n• Только английские буквы\n• Цифры и символ _\n• От 3 до 20 символов`);
   }
@@ -112,7 +87,6 @@ bot.on('message', (msg) => {
         bot.sendMessage(chatId, '📩 Опишите вашу проблему или вопрос:');
         break;
       default:
-        // Если это не команда меню
         bot.sendMessage(chatId, 'Используйте кнопки меню или команды');
     }
   } else {
@@ -148,7 +122,6 @@ bot.on('message', (msg) => {
       case 'Добавить друга':
         bot.sendMessage(chatId, 'Введите username друга в Telegram (например, @username):');
         user.friendAction = 'adding';
-        saveUsers();
         break;
         
       case 'Удалить друга':
@@ -157,7 +130,6 @@ bot.on('message', (msg) => {
         } else {
           bot.sendMessage(chatId, 'Введите username друга для удаления:');
           user.friendAction = 'removing';
-          saveUsers();
         }
         break;
         
@@ -191,30 +163,24 @@ bot.on('message', (msg) => {
   
   if (user && user.friendAction) {
     if (user.friendAction === 'adding') {
-      // Добавление друга
       if (!user.friends.includes(text)) {
         user.friends.push(text);
-        saveUsers();
         bot.sendMessage(chatId, `✅ Друг ${text} добавлен!`);
       } else {
         bot.sendMessage(chatId, '❌ Этот друг уже в списке');
       }
       user.friendAction = null;
-      saveUsers();
       showFriendsMenu(chatId);
       
     } else if (user.friendAction === 'removing') {
-      // Удаление друга
       const index = user.friends.indexOf(text);
       if (index > -1) {
         user.friends.splice(index, 1);
-        saveUsers();
         bot.sendMessage(chatId, `✅ Друг ${text} удален!`);
       } else {
         bot.sendMessage(chatId, '❌ Друг не найден в списке');
       }
       user.friendAction = null;
-      saveUsers();
       showFriendsMenu(chatId);
     }
   }
@@ -235,7 +201,6 @@ function handleRegistration(msg) {
     
     user.gameNickname = text;
     user.state = 'awaiting_id';
-    saveUsers();
     
     bot.sendMessage(chatId, '✅ Отлично! Теперь напишите ваш ID в игре:\n• Только цифры\n• 8 или 9 символов\n\nПример: 12345678');
     
@@ -246,11 +211,9 @@ function handleRegistration(msg) {
     
     user.gameId = text;
     user.state = 'completed';
-    saveUsers();
     
     bot.sendMessage(chatId, `🎉 Регистрация завершена!\n\n📝 Ваши данные:\n• Nickname: ${user.gameNickname}\n• Game ID: ${user.gameId}\n\nТеперь вы можете пользоваться всеми функциями бота!`);
     
-    // Показываем главное меню после регистрации
     showMainMenu(chatId, user.telegramUsername);
   }
 }
@@ -267,4 +230,4 @@ bot.onText(/\/data/, (msg) => {
   }
 });
 
-console.log('🤖 Бот запущен с исправленной работой с файлами!');
+console.log('🤖 Бот запущен! Данные хранятся в памяти.');
