@@ -2,215 +2,136 @@ const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const { Pool } = require('pg');
 
-// === EXPRESS СЕРВЕР ДЛЯ RENDER ===
+// === Render сервер ===
 const app = express();
 const port = process.env.PORT || 3000;
+app.get('/', (req, res) => res.send('🤖 Zekiro Faceit Bot is running!'));
+app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
 
-app.get('/', (req, res) => {
-  res.send('🤖 Zekiro Faceit Bot is running!');
+// === Подключение к Supabase (Postgres) ===
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
 });
 
-app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
-});
-
-// === TELEGRAM BOT ===
+// === Бот ===
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-// === POSTGRES (SUPABASE) ===
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+const admins = new Set(['6005466815']); // твой Telegram ID
 
-// === КОНСТАНТЫ ===
-const USER_STATES = {
-  START: 'start',
-  WAIT_NICKNAME: 'wait_nickname',
-  WAIT_GAME_ID: 'wait_game_id',
-  COMPLETED: 'completed',
-};
-
-let admins = new Set(['6005466815']); // твой Telegram ID
-
-// === ПРОВЕРКА АДМИНА ===
-function isAdmin(userId) {
-  return admins.has(userId.toString());
-}
-
-// === ГЛАВНОЕ МЕНЮ ===
-function showMainMenu(chatId, username) {
-  const menuOptions = {
+// Главное меню
+function mainMenu(chatId) {
+  bot.sendMessage(chatId, "📍 Главное меню", {
     reply_markup: {
-      inline_keyboard: [
-        [{ text: '🎮 Найти матч', callback_data: 'find_match' }],
-        [
-          { text: '📊 Профиль', callback_data: 'profile' },
-          { text: '🏆 Рейтинг', callback_data: 'rating' }
-        ],
-        [
-          { text: '👥 Друзья', callback_data: 'friends' },
-          { text: '📋 Команды', callback_data: 'commands' }
-        ],
-        [{ text: '❓ Помощь', callback_data: 'help' }],
-        ...(isAdmin(chatId)
-          ? [[{ text: '⚙️ Админ панель', callback_data: 'admin_panel' }]]
-          : [])
-      ]
+      keyboard: [
+        [{ text: "👤 Профиль" }],
+        [{ text: "⚙️ Админ-панель" }]
+      ],
+      resize_keyboard: true
     }
-  };
-
-  bot.sendMessage(
-    chatId,
-    `🎮 Добро пожаловать, ${username}!\n\nВыберите действие:`,
-    menuOptions
-  );
+  });
 }
 
-// === ОБРАБОТКА /start ===
-bot.onText(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  const username = msg.from.username || msg.from.first_name;
-
-  // проверяем пользователя в БД
-  const result = await pool.query(
-    'SELECT * FROM users WHERE telegram_id = $1',
-    [chatId]
-  );
-
-  if (result.rows.length === 0) {
-    await pool.query(
-      'INSERT INTO users (telegram_id, telegram_username, state) VALUES ($1, $2, $3)',
-      [chatId, username, USER_STATES.START]
-    );
-    await bot.sendMessage(chatId, '👋 Привет! Введи свой игровой ник:');
-    await pool.query(
-      'UPDATE users SET state = $1 WHERE telegram_id = $2',
-      [USER_STATES.WAIT_NICKNAME, chatId]
-    );
-  } else {
-    const user = result.rows[0];
-    if (user.state === USER_STATES.COMPLETED) {
-      showMainMenu(chatId, username);
-    } else if (user.state === USER_STATES.WAIT_NICKNAME) {
-      await bot.sendMessage(chatId, '✍️ Введи свой игровой ник:');
-    } else if (user.state === USER_STATES.WAIT_GAME_ID) {
-      await bot.sendMessage(chatId, '🔑 Введи свой игровой ID:');
-    }
-  }
-});
-
-// === ОБРАБОТКА СООБЩЕНИЙ ===
+// === Обработчик сообщений ===
 bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
   const text = msg.text;
 
-  const result = await pool.query(
-    'SELECT * FROM users WHERE telegram_id = $1',
-    [chatId]
-  );
+  if (text === "/start") {
+    // Проверяем регистрацию
+    const res = await pool.query('SELECT * FROM users WHERE telegram_id = $1', [chatId]);
+    if (res.rows.length === 0) {
+      return bot.sendMessage(chatId, "👋 Добро пожаловать! Отправь свой игровой ник для регистрации:");
+    }
+    return mainMenu(chatId);
+  }
 
-  if (result.rows.length === 0) return;
-  const user = result.rows[0];
+  if (text === "👤 Профиль") {
+    const res = await pool.query('SELECT * FROM users WHERE telegram_id = $1', [chatId]);
+    if (res.rows.length === 0) return bot.sendMessage(chatId, "⚠️ Вы не зарегистрированы! Напишите /start");
+    const u = res.rows[0];
 
-  if (user.state === USER_STATES.WAIT_NICKNAME) {
-    await pool.query(
-      'UPDATE users SET game_nickname = $1, state = $2 WHERE telegram_id = $3',
-      [text, USER_STATES.WAIT_GAME_ID, chatId]
+    // Последние 30 игр для AVG
+    const games = await pool.query(
+      'SELECT * FROM matches WHERE telegram_id = $1 ORDER BY created_at DESC LIMIT 30',
+      [chatId]
     );
-    await bot.sendMessage(chatId, '✅ Ник сохранён! Теперь введи свой игровой ID:');
-  } else if (user.state === USER_STATES.WAIT_GAME_ID) {
-    await pool.query(
-      'UPDATE users SET game_id = $1, state = $2 WHERE telegram_id = $3',
-      [text, USER_STATES.COMPLETED, chatId]
+
+    let kills30 = 0, deaths30 = 0;
+    games.rows.forEach(g => { kills30 += g.kills; deaths30 += g.deaths; });
+    const totalGames30 = games.rows.length;
+    const avgKills = totalGames30 > 0 ? (kills30 / totalGames30).toFixed(1) : 0;
+
+    // Winrate
+    const totalGames = u.wins + u.losses;
+    const winrate = totalGames > 0 ? ((u.wins / totalGames) * 100).toFixed(1) : 0;
+
+    // KD (накопительно)
+    const kd = u.deaths > 0 ? (u.kills / u.deaths).toFixed(2) : "—";
+
+    await bot.sendMessage(chatId,
+      `👤 *Ваш профиль*\n\n` +
+      `🎮 Ник: ${u.game_nickname}\n` +
+      `🆔 Игровой ID: ${u.game_id}\n` +
+      `📌 Telegram ID: ${u.telegram_id}\n\n` +
+      `✅ Победы: ${u.wins}\n` +
+      `❌ Поражения: ${u.losses}\n` +
+      `📊 Winrate: ${winrate}%\n` +
+      `🪙 ZF: ${u.zf_points}\n` +
+      `🔫 K/D: ${kd} (${u.kills}/${u.deaths})\n` +
+      `🎯 AVG Kills (30 игр): ${avgKills}`,
+      { parse_mode: 'Markdown' }
     );
-    await bot.sendMessage(chatId, '✅ Регистрация завершена!');
-    showMainMenu(chatId, user.telegram_username || user.telegram_id);
+  }
+
+  if (text === "⚙️ Админ-панель") {
+    if (!admins.has(chatId.toString())) return bot.sendMessage(chatId, "❌ Нет доступа");
+    bot.sendMessage(chatId, "⚙️ *Админ-панель*\n\nВыберите действие ниже:", {
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🚫 Заблокировать", callback_data: "ban" }],
+          [{ text: "✅ Разблокировать", callback_data: "unban" }],
+          [{ text: "📜 Логи", callback_data: "logs" }]
+        ]
+      }
+    });
   }
 });
 
-// === ОБРАБОТКА КНОПОК ===
+// === Обработчик кнопок ===
 bot.on("callback_query", async (query) => {
   const chatId = query.message.chat.id;
   const action = query.data;
 
-  switch (action) {
-    case 'find_match':
-    case 'friends':
-    case 'commands':
-      await bot.sendMessage(chatId, '⏳ Эта функция пока недоступна...');
-      break;
+  if (action === "ban") {
+    bot.sendMessage(chatId, "✍️ Напишите ник, срок и причину бана в формате:\n\n`ник | срок | причина`", { parse_mode: "Markdown" });
+    bot.once("message", async (msg) => {
+      const [nick, duration, reason] = msg.text.split("|").map(s => s.trim());
+      await pool.query("INSERT INTO bans (game_nickname, reason, banned_by) VALUES ($1,$2,$3)", [nick, reason, chatId]);
+      await pool.query("INSERT INTO logs (action, admin_id, target) VALUES ($1,$2,$3)", ["ban", chatId, nick]);
+      bot.sendMessage(chatId, `✅ Игрок ${nick} заблокирован.\nСрок: ${duration}\nПричина: ${reason}`);
+    });
+  }
 
-    case 'profile':
-      const user = await pool.query(
-        'SELECT * FROM users WHERE telegram_id = $1',
-        [chatId]
-      );
-      if (user.rows.length > 0) {
-        const u = user.rows[0];
-        await bot.sendMessage(
-          chatId,
-          `👤 *Твой профиль:*\n\n` +
-          `• Ник: ${u.game_nickname}\n` +
-          `• ID: ${u.game_id}`,
-          { parse_mode: 'Markdown' }
-        );
-      }
-      break;
+  if (action === "unban") {
+    bot.sendMessage(chatId, "✍️ Напишите ник для разбана:");
+    bot.once("message", async (msg) => {
+      const nick = msg.text.trim();
+      await pool.query("DELETE FROM bans WHERE game_nickname = $1", [nick]);
+      await pool.query("INSERT INTO logs (action, admin_id, target) VALUES ($1,$2,$3)", ["unban", chatId, nick]);
+      bot.sendMessage(chatId, `✅ Игрок ${nick} разбанен`);
+    });
+  }
 
-    case 'rating':
-      await bot.sendMessage(chatId, '🏆 Рейтинг пока пуст.');
-      break;
-
-    case 'help':
-      await bot.sendMessage(chatId, 'ℹ️ Этот бот помогает искать тиммейтов для Faceit.');
-      break;
-
-    case 'admin_panel':
-      if (isAdmin(chatId)) {
-        const adminMenu = {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '👥 Пользователи', callback_data: 'admin_users' }],
-              [{ text: '🚫 Баны', callback_data: 'admin_bans' }]
-            ]
-          }
-        };
-        await bot.sendMessage(chatId, '⚙️ Админ панель', adminMenu);
-      }
-      break;
-
-    case 'admin_users':
-      if (isAdmin(chatId)) {
-        const users = await pool.query(
-          'SELECT telegram_id, telegram_username, game_nickname, game_id FROM users WHERE state = $1',
-          [USER_STATES.COMPLETED]
-        );
-
-        if (users.rows.length === 0) {
-          await bot.sendMessage(chatId, 'Пока нет зарегистрированных пользователей.');
-          break;
-        }
-
-        let text = '👥 *Список пользователей:*\n\n';
-
-        users.rows.forEach(user => {
-          const nickname = user.game_nickname || '—';
-          const gameId = user.game_id || '—';
-          const tgLink = user.telegram_username
-            ? `[@${user.telegram_username}](https://t.me/${user.telegram_username})`
-            : `[ID: ${user.telegram_id}](tg://user?id=${user.telegram_id})`;
-
-          text += `• ${nickname} (${gameId}) — ${tgLink}\n`;
-        });
-
-        await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
-      }
-      break;
-
-    case 'admin_bans':
-      await bot.sendMessage(chatId, '🚫 Тут будет список заблокированных.');
-      break;
+  if (action === "logs") {
+    const logs = await pool.query("SELECT * FROM logs ORDER BY created_at DESC LIMIT 10");
+    if (logs.rows.length === 0) return bot.sendMessage(chatId, "📭 Логи пусты.");
+    let text = "📜 *Последние действия админов:*\n\n";
+    logs.rows.forEach(l => {
+      text += `👤 Admin: ${l.admin_id}\n➡️ Action: ${l.action}\n🎯 Target: ${l.target}\n🕒 ${l.created_at}\n\n`;
+    });
+    bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
   }
 });
