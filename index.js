@@ -20,6 +20,7 @@ const bot = new TelegramBot(token, { polling: true });
 let users = {};
 let bans = {};
 let admins = new Set();
+let userStats = {};
 
 // Загрузка данных
 function loadData() {
@@ -29,6 +30,7 @@ function loadData() {
       users = data.users || {};
       bans = data.bans || {};
       admins = new Set(data.admins || []);
+      userStats = data.stats || {};
       
       // Добавляем админов из переменных окружения
       const adminEnv = process.env.ADMIN_IDS || '';
@@ -47,7 +49,8 @@ function saveData() {
     const data = {
       users: users,
       bans: bans,
-      admins: Array.from(admins)
+      admins: Array.from(admins),
+      stats: userStats
     };
     fs.writeFileSync('data.json', JSON.stringify(data, null, 2));
   } catch (error) {
@@ -98,6 +101,63 @@ function getBanTimeLeft(until) {
   if (days > 0) return `${days}д ${hours}ч`;
   if (hours > 0) return `${hours}ч`;
   return 'менее часа';
+}
+
+// Функция показа профиля
+function showProfile(chatId) {
+  const user = users[chatId];
+  if (!user || !user.gameNickname) {
+    return bot.sendMessage(chatId, '❌ Профиль не заполнен. Завершите регистрацию через /start');
+  }
+
+  // Получаем или создаем статистику пользователя
+  if (!userStats[chatId]) {
+    userStats[chatId] = {
+      rating: 1000,
+      matches: 0,
+      wins: 0,
+      losses: 0,
+      kills: 0,
+      deaths: 0,
+      last30kills: []
+    };
+  }
+  
+  const stats = userStats[chatId];
+  
+  // Расчет винрейта
+  const winRate = stats.matches > 0 ? Math.round((stats.wins / stats.matches) * 100) : 0;
+  
+  // Расчет K/D
+  const kd = stats.deaths > 0 ? (stats.kills / stats.deaths).toFixed(2) : stats.kills > 0 ? '∞' : '0.00';
+  
+  // Расчет среднего киллов за последние 30 игр
+  const avgKills = stats.last30kills.length > 0 
+    ? (stats.last30kills.reduce((sum, k) => sum + k, 0) / stats.last30kills.length).toFixed(1)
+    : '0.0';
+
+  // Форматируем профиль
+  const profileText = 
+    `👤 *Профиль игрока:*\n` +
+    `\n` +
+    `📱 *TG ID:* ${chatId}\n` +
+    `\n` +
+    `🎮 *Никнейм:* ${user.gameNickname}\n` +
+    `🆔 *ID игры:* ${user.gameId}\n` +
+    `⭐ *ZF рейтинг:* ${stats.rating}\n` +
+    `\n` +
+    `📊 *Статистика:*\n` +
+    `🎯 *Сыграно матчей:* ${stats.matches}\n` +
+    `✅ *Победы:* ${stats.wins}\n` +
+    `❌ *Поражения:* ${stats.losses}\n` +
+    `📈 *Винрейт:* ${winRate}%\n` +
+    `\n` +
+    `🔫 *K/D:* ${kd} (${stats.kills}/${stats.deaths})\n` +
+    `🎯 *Ср. киллов:* ${avgKills} за 30 игр\n` +
+    `\n` +
+    `👥 *Друзей:* ${user.friends?.length || 0}`;
+
+  bot.sendMessage(chatId, profileText, { parse_mode: 'Markdown' });
 }
 
 // Главное меню
@@ -208,11 +268,7 @@ bot.on('callback_query', (callbackQuery) => {
       bot.sendMessage(chatId, '🔍 Ищем матч...');
       break;
     case 'profile':
-      if (user.gameNickname && user.gameId) {
-        bot.sendMessage(chatId, `📊 Ваш профиль:\n\n🎮 Nickname: ${user.gameNickname}\n🆔 Game ID: ${user.gameId}\n👥 Друзей: ${user.friends?.length || 0}`);
-      } else {
-        bot.sendMessage(chatId, '❌ Профиль не заполнен');
-      }
+      showProfile(chatId);
       break;
     case 'rating':
       showRating(chatId);
@@ -286,14 +342,19 @@ function showFriendsMenu(chatId) {
 
 // Рейтинг
 function showRating(chatId) {
-  const activeUsers = Object.values(users).filter(u => u.state === 'completed');
-  let ratingText = '🏆 Топ игроков:\n\n';
+  const activeUsers = Object.entries(userStats)
+    .filter(([id, stats]) => users[id] && users[id].state === 'completed')
+    .sort((a, b) => b[1].rating - a[1].rating)
+    .slice(0, 10);
   
-  activeUsers.slice(0, 5).forEach((user, index) => {
-    ratingText += `${index + 1}. ${user.gameNickname} (${user.gameId})\n`;
+  let ratingText = '🏆 *Топ игроков по ZF рейтингу:*\n\n';
+  
+  activeUsers.forEach(([userId, stats], index) => {
+    const user = users[userId];
+    ratingText += `${index + 1}. ${user.gameNickname} - ${stats.rating} ZF\n`;
   });
   
-  bot.sendMessage(chatId, ratingText || '😔 Нет игроков');
+  bot.sendMessage(chatId, ratingText || '😔 Нет игроков в рейтинге', { parse_mode: 'Markdown' });
 }
 
 // Команда /start
@@ -473,7 +534,36 @@ function handleAdminAction(msg, user) {
       return bot.sendMessage(chatId, '❌ Укажите срок бана');
     }
     
-    // ... аналогично команде /ban
+    if (isBanned(userId)) {
+      return bot.sendMessage(chatId, '❌ Уже забанен');
+    }
+    
+    let banInfo = {};
+    if (duration === 'permanent') {
+      banInfo = { permanent: true, bannedAt: Date.now() };
+    } else {
+      const timeMatch = duration.match(/(\d+)([dh])/);
+      if (!timeMatch) return bot.sendMessage(chatId, '❌ Формат: 7d или 24h');
+      
+      const amount = parseInt(timeMatch[1]);
+      const unit = timeMatch[2];
+      
+      let milliseconds = amount * 60 * 60 * 1000;
+      if (unit === 'd') milliseconds = amount * 24 * 60 * 60 * 1000;
+      
+      banInfo = { until: Date.now() + milliseconds, bannedAt: Date.now() };
+    }
+    
+    bans[userId] = banInfo;
+    saveData();
+    
+    const timeLeft = getBanTimeLeft(banInfo.until);
+    const message = banInfo.permanent 
+      ? '❌ Вы получили бан навсегда.'
+      : `❌ Вы получили бан. Разбан через ${timeLeft}.`;
+    
+    bot.sendMessage(chatId, `✅ Пользователь ${userId} забанен`);
+    bot.sendMessage(userId, message);
   }
   
   user.adminAction = null;
@@ -495,4 +585,42 @@ function handleFriendAction(msg, user) {
   showFriendsMenu(chatId);
 }
 
-console.log('🤖 Бот запущен!');
+// Функция для обновления статистики после матча
+function updateMatchStats(chatId, isWin, kills, deaths) {
+  if (!userStats[chatId]) {
+    userStats[chatId] = {
+      rating: 1000,
+      matches: 0,
+      wins: 0,
+      losses: 0,
+      kills: 0,
+      deaths: 0,
+      last30kills: []
+    };
+  }
+  
+  const stats = userStats[chatId];
+  
+  // Обновляем статистику
+  stats.matches++;
+  if (isWin) {
+    stats.wins++;
+    stats.rating += 25;
+  } else {
+    stats.losses++;
+    stats.rating = Math.max(500, stats.rating - 15);
+  }
+  
+  stats.kills += kills;
+  stats.deaths += deaths;
+  
+  // Обновляем последние 30 игр
+  stats.last30kills.push(kills);
+  if (stats.last30kills.length > 30) {
+    stats.last30kills.shift();
+  }
+  
+  saveData();
+}
+
+console.log('🤖 Бот запущен с полной статистикой профиля!');
