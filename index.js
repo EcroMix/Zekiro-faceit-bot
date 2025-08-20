@@ -19,7 +19,7 @@ const bot = new TelegramBot(token, { polling: true });
 // Хранилище данных
 let users = {};
 let bans = {};
-let admins = new Set();
+let admins = new Set(['6005466815']); // Ваш ID добавлен по умолчанию
 let userStats = {};
 
 // Загрузка данных
@@ -29,7 +29,7 @@ function loadData() {
       const data = JSON.parse(fs.readFileSync('data.json', 'utf8'));
       users = data.users || {};
       bans = data.bans || {};
-      admins = new Set(data.admins || []);
+      admins = new Set(data.admins || ['6005466815']);
       userStats = data.stats || {};
       
       console.log('✅ Данные загружены:', Object.keys(users).length, 'пользователей');
@@ -64,8 +64,8 @@ function saveData() {
 // Загружаем данные при старте
 loadData();
 
-// Автосохранение каждые 5 минут
-setInterval(saveData, 5 * 60 * 1000);
+// Автосохранение каждые 2 минуты
+setInterval(saveData, 2 * 60 * 1000);
 
 // Проверки
 function isValidNickname(nickname) {
@@ -249,6 +249,168 @@ function showAdminPanel(chatId, messageToDelete = null) {
   bot.sendMessage(chatId, '⚙️ Панель администратора:', adminMenu);
 }
 
+// Список пользователей
+function showUserList(chatId, messageToDelete = null) {
+  if (messageToDelete) {
+    deleteMessage(chatId, messageToDelete);
+  }
+
+  const userList = Object.entries(users)
+    .filter(([_, u]) => u.state === 'completed')
+    .map(([id, u]) => `👤 ${u.telegramUsername}\n🎮 ${u.gameNickname || 'нет'}\n🆔 ${u.gameId || 'нет'}\n📱 ${id}`)
+    .join('\n\n');
+
+  const userListMenu = {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '↩️ Главное меню', callback_data: 'main_menu' }]
+      ]
+    }
+  };
+
+  bot.sendMessage(chatId, `📊 Пользователи:\n\n${userList || 'Нет данных'}`, userListMenu);
+}
+
+// Статистика банов
+function showBanStats(chatId, messageToDelete = null) {
+  if (messageToDelete) {
+    deleteMessage(chatId, messageToDelete);
+  }
+
+  const activeBans = Object.entries(bans).filter(([_, b]) => 
+    b.permanent || (b.until && Date.now() < b.until)
+  );
+  
+  const banStatsText = 
+    `📊 Статистика банов:\n\n` +
+    `🚫 Активных банов: ${activeBans.length}\n` +
+    `🔒 Навсегда: ${activeBans.filter(([_, b]) => b.permanent).length}\n` +
+    `⏰ Временных: ${activeBans.filter(([_, b]) => !b.permanent).length}`;
+
+  const banStatsMenu = {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '↩️ Главное меню', callback_data: 'main_menu' }]
+      ]
+    }
+  };
+
+  bot.sendMessage(chatId, banStatsText, banStatsMenu);
+}
+
+// Меню друзей
+function showFriendsMenu(chatId, messageToDelete = null) {
+  if (messageToDelete) {
+    deleteMessage(chatId, messageToDelete);
+  }
+
+  const user = users[chatId];
+  const friendsCount = user.friends?.length || 0;
+  
+  const friendsMenu = {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '➕ Добавить', callback_data: 'add_friend' },
+          { text: '➖ Удалить', callback_data: 'remove_friend' }
+        ],
+        [
+          { text: '📋 Список', callback_data: 'friends_list' }
+        ],
+        [
+          { text: '↩️ Главное меню', callback_data: 'main_menu' }
+        ]
+      ]
+    }
+  };
+  
+  bot.sendMessage(chatId, `👥 Друзья: ${friendsCount}`, friendsMenu);
+}
+
+// Рейтинг
+function showRating(chatId, messageToDelete = null) {
+  if (messageToDelete) {
+    deleteMessage(chatId, messageToDelete);
+  }
+
+  const activeUsers = Object.entries(userStats)
+    .filter(([id, stats]) => users[id] && users[id].state === 'completed')
+    .sort((a, b) => b[1].rating - a[1].rating)
+    .slice(0, 10);
+  
+  let ratingText = '🏆 *Топ игроков по ZF рейтингу:*\n\n';
+  
+  activeUsers.forEach(([userId, stats], index) => {
+    const user = users[userId];
+    ratingText += `${index + 1}. ${user.gameNickname} - ${stats.rating} ZF\n`;
+  });
+
+  const ratingMenu = {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '↩️ Главное меню', callback_data: 'main_menu' }]
+      ]
+    },
+    parse_mode: 'Markdown'
+  };
+  
+  bot.sendMessage(chatId, ratingText || '😔 Нет игроков в рейтинге', ratingMenu);
+}
+
+// Показать команды
+function showCommands(chatId, messageToDelete = null) {
+  if (messageToDelete) {
+    deleteMessage(chatId, messageToDelete);
+  }
+
+  const commandsText = isAdmin(chatId) 
+    ? '📋 *Доступные команды:*\n\n' +
+      '/start - главное меню\n' +
+      '/admin - админ панель\n' +
+      '/ban ID срок - бан пользователя\n' +
+      '/unban ID - разбан пользователя\n\n' +
+      'Пример: /ban 123456789 7d'
+    : '📋 *Доступные команды:*\n\n' +
+      '/start - главное меню\n' +
+      '/profile - ваш профиль';
+
+  const commandsMenu = {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '↩️ Главное меню', callback_data: 'main_menu' }]
+      ]
+    },
+    parse_mode: 'Markdown'
+  };
+
+  bot.sendMessage(chatId, commandsText, commandsMenu);
+}
+
+// Показать помощь
+function showHelp(chatId, messageToDelete = null) {
+  if (messageToDelete) {
+    deleteMessage(chatId, messageToDelete);
+  }
+
+  const helpText = '❓ *Помощь по боту:*\n\n' +
+    '• Используйте кнопки меню для навигации\n' +
+    '• Для регистрации введите /start\n' +
+    '• Профиль показывает вашу статистику\n' +
+    '• Рейтинг - топ игроков по ZF\n' +
+    '• Админы могут банить пользователей';
+
+  const helpMenu = {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: '↩️ Главное меню', callback_data: 'main_menu' }]
+      ]
+    },
+    parse_mode: 'Markdown'
+  };
+
+  bot.sendMessage(chatId, helpText, helpMenu);
+}
+
 // Обработка кнопок
 bot.on('callback_query', (callbackQuery) => {
   const msg = callbackQuery.message;
@@ -334,64 +496,127 @@ bot.on('callback_query', (callbackQuery) => {
     case 'help':
       showHelp(chatId);
       break;
+    case 'add_friend':
+      bot.sendMessage(chatId, 'Введите username друга:');
+      users[chatId].friendAction = 'adding';
+      break;
+    case 'remove_friend':
+      bot.sendMessage(chatId, 'Введите username друга для удаления:');
+      users[chatId].friendAction = 'removing';
+      break;
+    case 'friends_list':
+      if (user.friends && user.friends.length > 0) {
+        const friendsList = user.friends.map((friend, index) => `${index + 1}. ${friend}`).join('\n');
+        bot.sendMessage(chatId, `📋 Ваши друзья:\n\n${friendsList}`);
+      } else {
+        bot.sendMessage(chatId, '📝 У вас пока нет друзей');
+      }
+      break;
   }
 });
 
-// Показать команды
-function showCommands(chatId, messageToDelete = null) {
-  if (messageToDelete) {
-    deleteMessage(chatId, messageToDelete);
+// Обработка регистрации
+function handleRegistration(msg, user) {
+  const chatId = msg.chat.id;
+  const text = msg.text;
+  
+  if (user.state === 'awaiting_nickname') {
+    if (!isValidNickname(text)) {
+      return bot.sendMessage(chatId, '❌ Неверный формат! Только EN буквы, цифры, _. 3-20 символов.');
+    }
+    
+    user.gameNickname = text;
+    user.state = 'awaiting_id';
+    saveData();
+    
+    bot.sendMessage(chatId, '✅ Теперь введите ID игры (8-9 цифр):');
+    
+  } else if (user.state === 'awaiting_id') {
+    if (!isValidGameId(text)) {
+      return bot.sendMessage(chatId, '❌ Неверный ID! Только 8-9 цифр.');
+    }
+    
+    user.gameId = text;
+    user.state = 'completed';
+    saveData();
+    
+    bot.sendMessage(chatId, `🎉 Регистрация завершена!\nNickname: ${user.gameNickname}\nID: ${user.gameId}`);
+    showMainMenu(chatId);
   }
-
-  const commandsText = isAdmin(chatId) 
-    ? '📋 *Доступные команды:*\n\n' +
-      '/start - главное меню\n' +
-      '/admin - админ панель\n' +
-      '/ban ID срок - бан пользователя\n' +
-      '/unban ID - разбан пользователя\n\n' +
-      'Пример: /ban 123456789 7d'
-    : '📋 *Доступные команды:*\n\n' +
-      '/start - главное меню\n' +
-      '/profile - ваш профиль';
-
-  const commandsMenu = {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '↩️ Главное меню', callback_data: 'main_menu' }]
-      ]
-    },
-    parse_mode: 'Markdown'
-  };
-
-  bot.sendMessage(chatId, commandsText, commandsMenu);
 }
 
-// Показать помощь
-function showHelp(chatId, messageToDelete = null) {
-  if (messageToDelete) {
-    deleteMessage(chatId, messageToDelete);
+// Обработка админ действий
+function handleAdminAction(msg, user) {
+  const chatId = msg.chat.id;
+  const text = msg.text;
+  
+  if (user.adminAction === 'ban') {
+    const parts = text.split(' ');
+    const userId = parts[0];
+    const duration = parts[1]?.toLowerCase();
+    
+    if (!duration) {
+      return bot.sendMessage(chatId, '❌ Укажите срок бана');
+    }
+    
+    if (isBanned(userId)) {
+      return bot.sendMessage(chatId, '❌ Уже забанен');
+    }
+    
+    let banInfo = {};
+    if (duration === 'permanent') {
+      banInfo = { permanent: true, bannedAt: Date.now() };
+    } else {
+      const timeMatch = duration.match(/(\d+)([dh])/);
+      if (!timeMatch) return bot.sendMessage(chatId, '❌ Формат: 7d или 24h');
+      
+      const amount = parseInt(timeMatch[1]);
+      const unit = timeMatch[2];
+      
+      let milliseconds = amount * 60 * 60 * 1000;
+      if (unit === 'd') milliseconds = amount * 24 * 60 * 60 * 1000;
+      
+      banInfo = { until: Date.now() + milliseconds, bannedAt: Date.now() };
+    }
+    
+    bans[userId] = banInfo;
+    saveData();
+    
+    const timeLeft = getBanTimeLeft(banInfo.until);
+    const message = banInfo.permanent 
+      ? '❌ Вы получили бан навсегда.'
+      : `❌ Вы получили бан. Разбан через ${timeLeft}.`;
+    
+    bot.sendMessage(chatId, `✅ Пользователь ${userId} забанен`);
+    bot.sendMessage(userId, message);
   }
-
-  const helpText = '❓ *Помощь по боту:*\n\n' +
-    '• Используйте кнопки меню для навигации\n' +
-    '• Для регистрации введите /start\n' +
-    '• Профиль показывает вашу статистику\n' +
-    '• Рейтинг - топ игроков по ZF\n' +
-    '• Админы могут банить пользователей';
-
-  const helpMenu = {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '↩️ Главное меню', callback_data: 'main_menu' }]
-      ]
-    },
-    parse_mode: 'Markdown'
-  };
-
-  bot.sendMessage(chatId, helpText, helpMenu);
+  
+  user.adminAction = null;
 }
 
-// Остальные функции (showUserList, showBanStats, showFriendsMenu, showRating) остаются аналогичными с добавлением кнопки "Главное меню"
+// Обработка друзей
+function handleFriendAction(msg, user) {
+  const chatId = msg.chat.id;
+  const text = msg.text;
+  
+  if (user.friendAction === 'adding') {
+    if (!user.friends) user.friends = [];
+    user.friends.push(text);
+    saveData();
+    bot.sendMessage(chatId, `✅ Друг ${text} добавлен`);
+  } else if (user.friendAction === 'removing') {
+    if (user.friends && user.friends.includes(text)) {
+      user.friends = user.friends.filter(friend => friend !== text);
+      saveData();
+      bot.sendMessage(chatId, `✅ Друг ${text} удален`);
+    } else {
+      bot.sendMessage(chatId, '❌ Друг не найден');
+    }
+  }
+  
+  user.friendAction = null;
+  showFriendsMenu(chatId);
+}
 
 // Команда /start
 bot.onText(/\/start/, (msg) => {
@@ -423,7 +648,67 @@ bot.onText(/\/start/, (msg) => {
   }
 });
 
-// Остальные команды (/admin, /ban, /unban) остаются без изменений
+// Команда /admin
+bot.onText(/\/admin/, (msg) => {
+  const chatId = msg.chat.id;
+  if (!isAdmin(chatId)) return bot.sendMessage(chatId, '❌ Доступ запрещен');
+  showAdminPanel(chatId);
+});
+
+// Команда /ban
+bot.onText(/\/ban (\d+) (.+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  if (!isAdmin(chatId)) return bot.sendMessage(chatId, '❌ Доступ запрещен');
+  
+  const userId = match[1];
+  const duration = match[2].toLowerCase();
+  
+  if (isBanned(userId)) {
+    return bot.sendMessage(chatId, '❌ Уже забанен');
+  }
+  
+  let banInfo = {};
+  if (duration === 'permanent') {
+    banInfo = { permanent: true, bannedAt: Date.now() };
+  } else {
+    const timeMatch = duration.match(/(\d+)([dh])/);
+    if (!timeMatch) return bot.sendMessage(chatId, '❌ Формат: 7d или 24h');
+    
+    const amount = parseInt(timeMatch[1]);
+    const unit = timeMatch[2];
+    
+    let milliseconds = amount * 60 * 60 * 1000;
+    if (unit === 'd') milliseconds = amount * 24 * 60 * 60 * 1000;
+    
+    banInfo = { until: Date.now() + milliseconds, bannedAt: Date.now() };
+  }
+  
+  bans[userId] = banInfo;
+  saveData();
+  
+  const timeLeft = getBanTimeLeft(banInfo.until);
+  const message = banInfo.permanent 
+    ? '❌ Вы получили бан навсегда.'
+    : `❌ Вы получили бан. Разбан через ${timeLeft}.`;
+  
+  bot.sendMessage(chatId, `✅ Пользователь ${userId} забанен`);
+  bot.sendMessage(userId, message);
+});
+
+// Команда /unban
+bot.onText(/\/unban (\d+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  if (!isAdmin(chatId)) return bot.sendMessage(chatId, '❌ Доступ запрещен');
+  
+  const userId = match[1];
+  if (!isBanned(userId)) return bot.sendMessage(chatId, '❌ Не забанен');
+  
+  delete bans[userId];
+  saveData();
+  
+  bot.sendMessage(chatId, `✅ Пользователь ${userId} разбанен`);
+  bot.sendMessage(userId, '✅ Вы разблокированы. Добро пожаловать!');
+});
 
 // Обработка сообщений
 bot.on('message', (msg) => {
@@ -465,4 +750,4 @@ bot.on('message', (msg) => {
   showMainMenu(chatId);
 });
 
-console.log('🤖 Бот запущен с улучшенными инлайн-кнопками и сохранением данных!');
+console.log('🤖 Бот запущен! Ваш ID 6005466815 добавлен как администратор. Автосохранение каждые 2 минуты.');
