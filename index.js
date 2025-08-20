@@ -19,7 +19,7 @@ const bot = new TelegramBot(token, { polling: true });
 // Хранилище данных
 let users = {};
 let bans = {};
-let admins = new Set(['6005466815']); // Ваш ID добавлен по умолчанию
+let admins = new Set(['6005466815']);
 let userStats = {};
 
 // Загрузка данных
@@ -38,7 +38,6 @@ function loadData() {
     console.log('❌ Ошибка загрузки данных, создаем новые');
   }
   
-  // Добавляем админов из переменных окружения
   const adminEnv = process.env.ADMIN_IDS || '';
   if (adminEnv) {
     adminEnv.split(',').forEach(id => admins.add(id.trim()));
@@ -114,6 +113,13 @@ function deleteMessage(chatId, messageId) {
   bot.deleteMessage(chatId, messageId).catch(error => {
     console.log('Не удалось удалить сообщение:', error.message);
   });
+}
+
+// Поиск пользователя по никнейму
+function findUserByNickname(nickname) {
+  return Object.entries(users).find(([_, user]) => 
+    user.gameNickname && user.gameNickname.toLowerCase() === nickname.toLowerCase() && user.state === 'completed'
+  );
 }
 
 // Главное меню
@@ -206,7 +212,7 @@ function showProfile(chatId, messageToDelete = null) {
     `📈 *Винрейт:* ${winRate}%\n` +
     `\n` +
     `🔫 *K/D:* ${kd} (${stats.kills}/${stats.deaths})\n` +
-    `🎯 *Ср. киллов:* ${avgKills} за 30 игр\n` +
+    `🎯 *AVG:* ${avgKills} за 30 игр\n` +
     `\n` +
     `👥 *Друзей:* ${user.friends?.length || 0}`;
 
@@ -232,7 +238,7 @@ function showAdminPanel(chatId, messageToDelete = null) {
     reply_markup: {
       inline_keyboard: [
         [
-          { text: '👥 Список users', callback_data: 'admin_users' },
+          { text: '👥 Список пользователей', callback_data: 'admin_users' },
           { text: '🚫 Забанить', callback_data: 'admin_ban' }
         ],
         [
@@ -249,7 +255,7 @@ function showAdminPanel(chatId, messageToDelete = null) {
   bot.sendMessage(chatId, '⚙️ Панель администратора:', adminMenu);
 }
 
-// Список пользователей
+// Список пользователей с нумерацией
 function showUserList(chatId, messageToDelete = null) {
   if (messageToDelete) {
     deleteMessage(chatId, messageToDelete);
@@ -257,8 +263,10 @@ function showUserList(chatId, messageToDelete = null) {
 
   const userList = Object.entries(users)
     .filter(([_, u]) => u.state === 'completed')
-    .map(([id, u]) => `👤 ${u.telegramUsername}\n🎮 ${u.gameNickname || 'нет'}\n🆔 ${u.gameId || 'нет'}\n📱 ${id}`)
-    .join('\n\n');
+    .map(([id, u], index) => 
+      `${index + 1}. ${u.telegramUsername} - ${u.gameNickname} (${u.gameId})`
+    )
+    .join('\n');
 
   const userListMenu = {
     reply_markup: {
@@ -268,7 +276,7 @@ function showUserList(chatId, messageToDelete = null) {
     }
   };
 
-  bot.sendMessage(chatId, `📊 Пользователи:\n\n${userList || 'Нет данных'}`, userListMenu);
+  bot.sendMessage(chatId, `📊 Зарегистрированные пользователи:\n\n${userList || 'Нет данных'}`, userListMenu);
 }
 
 // Статистика банов
@@ -367,9 +375,9 @@ function showCommands(chatId, messageToDelete = null) {
     ? '📋 *Доступные команды:*\n\n' +
       '/start - главное меню\n' +
       '/admin - админ панель\n' +
-      '/ban ID срок - бан пользователя\n' +
-      '/unban ID - разбан пользователя\n\n' +
-      'Пример: /ban 123456789 7d'
+      '/ban никнейм срок - бан пользователя\n' +
+      '/unban никнейм - разбан пользователя\n\n' +
+      'Пример: /ban PlayerName 7d'
     : '📋 *Доступные команды:*\n\n' +
       '/start - главное меню\n' +
       '/profile - ваш профиль';
@@ -397,7 +405,7 @@ function showHelp(chatId, messageToDelete = null) {
     '• Для регистрации введите /start\n' +
     '• Профиль показывает вашу статистику\n' +
     '• Рейтинг - топ игроков по ZF\n' +
-    '• Админы могут банить пользователей';
+    '• Админы могут банить пользователей по никнейму';
 
   const helpMenu = {
     reply_markup: {
@@ -460,12 +468,12 @@ bot.on('callback_query', (callbackQuery) => {
         showUserList(chatId);
         break;
       case 'admin_ban':
-        bot.sendMessage(chatId, 'Введите ID пользователя и срок бана:\nПример: 123456789 7d\nИли: 123456789 permanent');
-        users[chatId].adminAction = 'ban';
+        bot.sendMessage(chatId, 'Введите никнейм пользователя для бана и срок (например: PlayerName 7d или PlayerName permanent):');
+        users[chatId].adminAction = 'ban_nickname';
         break;
       case 'admin_unban':
-        bot.sendMessage(chatId, 'Введите ID пользователя для разбана:');
-        users[chatId].adminAction = 'unban';
+        bot.sendMessage(chatId, 'Введите никнейм пользователя для разбана:');
+        users[chatId].adminAction = 'unban_nickname';
         break;
       case 'admin_stats':
         showBanStats(chatId);
@@ -479,7 +487,7 @@ bot.on('callback_query', (callbackQuery) => {
   
   switch(data) {
     case 'find_match':
-      bot.sendMessage(chatId, '🔍 Ищем матч...');
+      bot.sendMessage(chatId, '⏳ Функция "Найти матч" временно недоступна');
       break;
     case 'profile':
       showProfile(chatId);
@@ -488,29 +496,13 @@ bot.on('callback_query', (callbackQuery) => {
       showRating(chatId);
       break;
     case 'friends':
-      showFriendsMenu(chatId);
+      bot.sendMessage(chatId, '⏳ Функция "Друзья" временно недоступна');
       break;
     case 'commands':
       showCommands(chatId);
       break;
     case 'help':
       showHelp(chatId);
-      break;
-    case 'add_friend':
-      bot.sendMessage(chatId, 'Введите username друга:');
-      users[chatId].friendAction = 'adding';
-      break;
-    case 'remove_friend':
-      bot.sendMessage(chatId, 'Введите username друга для удаления:');
-      users[chatId].friendAction = 'removing';
-      break;
-    case 'friends_list':
-      if (user.friends && user.friends.length > 0) {
-        const friendsList = user.friends.map((friend, index) => `${index + 1}. ${friend}`).join('\n');
-        bot.sendMessage(chatId, `📋 Ваши друзья:\n\n${friendsList}`);
-      } else {
-        bot.sendMessage(chatId, '📝 У вас пока нет друзей');
-      }
       break;
   }
 });
@@ -550,17 +542,24 @@ function handleAdminAction(msg, user) {
   const chatId = msg.chat.id;
   const text = msg.text;
   
-  if (user.adminAction === 'ban') {
+  if (user.adminAction === 'ban_nickname') {
     const parts = text.split(' ');
-    const userId = parts[0];
+    const nickname = parts[0];
     const duration = parts[1]?.toLowerCase();
     
     if (!duration) {
-      return bot.sendMessage(chatId, '❌ Укажите срок бана');
+      return bot.sendMessage(chatId, '❌ Укажите срок бана (например: 7d или permanent)');
     }
     
+    const foundUser = findUserByNickname(nickname);
+    if (!foundUser) {
+      return bot.sendMessage(chatId, '❌ Пользователь с таким никнеймом не найден');
+    }
+    
+    const [userId, userData] = foundUser;
+    
     if (isBanned(userId)) {
-      return bot.sendMessage(chatId, '❌ Уже забанен');
+      return bot.sendMessage(chatId, '❌ Пользователь уже забанен');
     }
     
     let banInfo = {};
@@ -587,35 +586,29 @@ function handleAdminAction(msg, user) {
       ? '❌ Вы получили бан навсегда.'
       : `❌ Вы получили бан. Разбан через ${timeLeft}.`;
     
-    bot.sendMessage(chatId, `✅ Пользователь ${userId} забанен`);
+    bot.sendMessage(chatId, `✅ Пользователь ${userData.gameNickname} забанен`);
     bot.sendMessage(userId, message);
+    
+  } else if (user.adminAction === 'unban_nickname') {
+    const foundUser = findUserByNickname(text);
+    if (!foundUser) {
+      return bot.sendMessage(chatId, '❌ Пользователь с таким никнеймом не найден');
+    }
+    
+    const [userId, userData] = foundUser;
+    
+    if (!isBanned(userId)) {
+      return bot.sendMessage(chatId, '❌ Пользователь не забанен');
+    }
+    
+    delete bans[userId];
+    saveData();
+    
+    bot.sendMessage(chatId, `✅ Пользователь ${userData.gameNickname} разбанен`);
+    bot.sendMessage(userId, '✅ Вы были разблокированы администратором. Добро пожаловать обратно!');
   }
   
   user.adminAction = null;
-}
-
-// Обработка друзей
-function handleFriendAction(msg, user) {
-  const chatId = msg.chat.id;
-  const text = msg.text;
-  
-  if (user.friendAction === 'adding') {
-    if (!user.friends) user.friends = [];
-    user.friends.push(text);
-    saveData();
-    bot.sendMessage(chatId, `✅ Друг ${text} добавлен`);
-  } else if (user.friendAction === 'removing') {
-    if (user.friends && user.friends.includes(text)) {
-      user.friends = user.friends.filter(friend => friend !== text);
-      saveData();
-      bot.sendMessage(chatId, `✅ Друг ${text} удален`);
-    } else {
-      bot.sendMessage(chatId, '❌ Друг не найден');
-    }
-  }
-  
-  user.friendAction = null;
-  showFriendsMenu(chatId);
 }
 
 // Команда /start
@@ -655,16 +648,25 @@ bot.onText(/\/admin/, (msg) => {
   showAdminPanel(chatId);
 });
 
-// Команда /ban
-bot.onText(/\/ban (\d+) (.+)/, (msg, match) => {
+// Команда /ban по никнейму
+bot.onText(/\/ban (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
   if (!isAdmin(chatId)) return bot.sendMessage(chatId, '❌ Доступ запрещен');
   
-  const userId = match[1];
-  const duration = match[2].toLowerCase();
+  const text = match[1];
+  const parts = text.split(' ');
+  const nickname = parts[0];
+  const duration = parts[1]?.toLowerCase() || 'permanent';
+  
+  const foundUser = findUserByNickname(nickname);
+  if (!foundUser) {
+    return bot.sendMessage(chatId, '❌ Пользователь с таким никнеймом не найден');
+  }
+  
+  const [userId, userData] = foundUser;
   
   if (isBanned(userId)) {
-    return bot.sendMessage(chatId, '❌ Уже забанен');
+    return bot.sendMessage(chatId, '❌ Пользователь уже забанен');
   }
   
   let banInfo = {};
@@ -691,23 +693,32 @@ bot.onText(/\/ban (\d+) (.+)/, (msg, match) => {
     ? '❌ Вы получили бан навсегда.'
     : `❌ Вы получили бан. Разбан через ${timeLeft}.`;
   
-  bot.sendMessage(chatId, `✅ Пользователь ${userId} забанен`);
+  bot.sendMessage(chatId, `✅ Пользователь ${userData.gameNickname} забанен`);
   bot.sendMessage(userId, message);
 });
 
-// Команда /unban
-bot.onText(/\/unban (\d+)/, (msg, match) => {
+// Команда /unban по никнейму
+bot.onText(/\/unban (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
   if (!isAdmin(chatId)) return bot.sendMessage(chatId, '❌ Доступ запрещен');
   
-  const userId = match[1];
-  if (!isBanned(userId)) return bot.sendMessage(chatId, '❌ Не забанен');
+  const nickname = match[1];
+  const foundUser = findUserByNickname(nickname);
+  if (!foundUser) {
+    return bot.sendMessage(chatId, '❌ Пользователь с таким никнеймом не найден');
+  }
+  
+  const [userId, userData] = foundUser;
+  
+  if (!isBanned(userId)) {
+    return bot.sendMessage(chatId, '❌ Пользователь не забанен');
+  }
   
   delete bans[userId];
   saveData();
   
-  bot.sendMessage(chatId, `✅ Пользователь ${userId} разбанен`);
-  bot.sendMessage(userId, '✅ Вы разблокированы. Добро пожаловать!');
+  bot.sendMessage(chatId, `✅ Пользователь ${userData.gameNickname} разбанен`);
+  bot.sendMessage(userId, '✅ Вы были разблокированы администратором. Добро пожаловать обратно!');
 });
 
 // Обработка сообщений
@@ -732,12 +743,6 @@ bot.on('message', (msg) => {
   // Админ действия
   if (user.adminAction && isAdmin(chatId)) {
     handleAdminAction(msg, user);
-    return;
-  }
-  
-  // Друзья
-  if (user.friendAction) {
-    handleFriendAction(msg, user);
     return;
   }
   
