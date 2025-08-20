@@ -16,7 +16,14 @@ app.listen(port, () => {
 
 // Запуск телеграм-бота
 const token = process.env.BOT_TOKEN;
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(token);
+
+bot.setWebHook(`https://zekiro-faceit-bot.onrender.com/${token}`);
+
+app.post(`/${token}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
 
 // Хранилище данных (пока в памяти)
 let users = {};
