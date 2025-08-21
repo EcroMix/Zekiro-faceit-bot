@@ -3,14 +3,16 @@ const TelegramBot = require('node-telegram-bot-api');
 const { createClient } = require('@supabase/supabase-js');
 
 const token = process.env.BOT_TOKEN;
-const bot = new TelegramBot(token, { polling: true });
+
+// Создаем объект бота без polling
+const bot = new TelegramBot(token, { polling: false });
 
 // Supabase
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Пользователи онлайн
+// Пользователи в лобби
 let lobbies = {
     "1": [],
     "2": [],
@@ -19,25 +21,34 @@ let lobbies = {
     "5": []
 };
 
-// START команда
+// Удаляем webhook перед запуском polling
+bot.deleteWebhook()
+   .then(() => {
+       console.log("Webhook удален, запускаем polling...");
+       bot.startPolling();
+   })
+   .catch(err => console.error("Ошибка при удалении webhook:", err));
+
+// ====== События бота ======
+
+// Команда /start
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     await bot.sendMessage(chatId, "Привет! Для регистрации напиши свой игровой никнейм.");
-    // Можно сохранить состояние пользователя в Supabase, что он в процессе регистрации
+    // Здесь можно сохранять состояние пользователя в Supabase
 });
 
-// Получение никнейма и ID игрока
+// Обработка текстовых сообщений (ник и ID игрока)
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
 
-    // Проверка состояния регистрации (надо хранить в БД)
-    // Пример: если пользователь в процессе регистрации
-    // 1. Сохраняем никнейм
-    // 2. Просим ввести ID игры
+    // TODO: добавить проверку состояния регистрации
+    // 1. Если пользователь еще не зарегистрирован — сохраняем ник
+    // 2. Запрашиваем ID игры
 });
 
-// Кнопки выбора действий
+// Главное меню с inline кнопками
 const mainMenu = {
     reply_markup: {
         inline_keyboard: [
@@ -67,10 +78,11 @@ bot.on('callback_query', async (callbackQuery) => {
         case "admin_panel":
             showAdminPanel(chatId, callbackQuery.from.id);
             break;
-        // остальные кнопки...
+        // TODO: остальные кнопки
     }
 });
 
+// Функция показа лобби
 function showLobbies(chatId) {
     const keyboard = {
         reply_markup: {
@@ -86,12 +98,14 @@ function showLobbies(chatId) {
     bot.sendMessage(chatId, "Выберите лобби:", keyboard);
 }
 
+// Функция показа профиля
 function showProfile(chatId) {
     // Здесь нужно вытягивать данные из Supabase
-    const text = `🆔 TG: 6005466815\n👤 Никнейм: EcroMix\n...`;
+    const text = `🆔 TG: 6005466815\n👤 Никнейм: EcroMix\n🎮 Сыграно матчей: 15\n🏆 Побед: 11\n💔 Поражений: 4\n⚔️ K/D: 2.19\n🎯 AVG: 14.1`;
     bot.sendMessage(chatId, text);
 }
 
+// Функция показа админ панели
 function showAdminPanel(chatId, userId) {
     const adminId = 6005466815;
     if (userId !== adminId) return bot.sendMessage(chatId, "Доступ только для админа.");
