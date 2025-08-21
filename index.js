@@ -1,171 +1,109 @@
-const TelegramBot = require("node-telegram-bot-api");
-const express = require("express");
-const { Pool } = require("pg");
+require('dotenv').config();
+const TelegramBot = require('node-telegram-bot-api');
+const { createClient } = require('@supabase/supabase-js');
 
-// ====== CONFIG ======
-const token = process.env.BOT_TOKEN; // токен бота
+const token = process.env.BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // строка подключения Supabase
-  ssl: { rejectUnauthorized: false }
-});
+// Supabase
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-const ADMIN_ID = 6005466815; // твой Telegram ID (главный админ)
+// Пользователи онлайн
+let lobbies = {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "5": []
+};
 
-// ====== EXPRESS KEEPALIVE ======
-const app = express();
-app.get("/", (req, res) => res.send("Bot is running..."));
-app.listen(process.env.PORT || 3000);
-
-// ====== УТИЛИТЫ ======
-async function deleteMessage(chatId, messageId) {
-  try {
-    await bot.deleteMessage(chatId, messageId);
-  } catch (e) {
-    console.log("Ошибка удаления:", e.message);
-  }
-}
-
-// ====== РЕГИСТРАЦИЯ ======
+// START команда
 bot.onText(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  const tgId = msg.from.id;
-  const nickname = msg.from.username || msg.from.first_name;
-
-  try {
-    const user = await pool.query("SELECT * FROM users WHERE tg_id = $1", [tgId]);
-
-    if (user.rows.length === 0) {
-      await pool.query(
-        "INSERT INTO users (tg_id, nickname, reg_date) VALUES ($1,$2,NOW())",
-        [tgId, nickname]
-      );
-      bot.sendMessage(chatId, `✅ Вы успешно зарегистрированы как *${nickname}*`, {
-        parse_mode: "Markdown"
-      });
-    }
-
-    sendMainMenu(chatId, tgId);
-  } catch (e) {
-    console.error("Ошибка регистрации:", e.message);
-    bot.sendMessage(chatId, "❌ Ошибка регистрации. Попробуйте позже.");
-  }
+    const chatId = msg.chat.id;
+    await bot.sendMessage(chatId, "Привет! Для регистрации напиши свой игровой никнейм.");
+    // Можно сохранить состояние пользователя в Supabase, что он в процессе регистрации
 });
 
-// ====== ГЛАВНОЕ МЕНЮ ======
-function sendMainMenu(chatId, tgId) {
-  const keyboard = {
-    inline_keyboard: [
-      [{ text: "🎮 Найти матч", callback_data: "find_match" }],
-      [
-        { text: "👤 Профиль", callback_data: "profile" },
-        { text: "🏆 Рейтинг игроков", callback_data: "rating" }
-      ],
-      [
-        { text: "👥 Команды", callback_data: "teams" },
-        { text: "📩 Создать тикет", callback_data: "ticket" }
-      ]
-    ]
-  };
+// Получение никнейма и ID игрока
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
 
-  if (tgId == ADMIN_ID) {
-    keyboard.inline_keyboard.push([
-      { text: "⚙️ Панель администратора", callback_data: "admin_panel" }
-    ]);
-  }
+    // Проверка состояния регистрации (надо хранить в БД)
+    // Пример: если пользователь в процессе регистрации
+    // 1. Сохраняем никнейм
+    // 2. Просим ввести ID игры
+});
 
-  bot.sendMessage(chatId, "🔽 Выберите действие:", {
-    reply_markup: keyboard
-  });
+// Кнопки выбора действий
+const mainMenu = {
+    reply_markup: {
+        inline_keyboard: [
+            [{ text: "Найти матч", callback_data: "find_match" }],
+            [{ text: "Профиль", callback_data: "profile" }],
+            [{ text: "Рейтинг игроков", callback_data: "rating" }],
+            [{ text: "Команды", callback_data: "teams" }],
+            [{ text: "Создать тикет", callback_data: "ticket" }],
+            [{ text: "Панель администратора", callback_data: "admin_panel" }]
+        ]
+    }
+};
+
+// Обработка инлайн кнопок
+bot.on('callback_query', async (callbackQuery) => {
+    const chatId = callbackQuery.message.chat.id;
+    const data = callbackQuery.data;
+
+    switch(data) {
+        case "find_match":
+            bot.deleteMessage(chatId, callbackQuery.message.message_id);
+            showLobbies(chatId);
+            break;
+        case "profile":
+            showProfile(chatId);
+            break;
+        case "admin_panel":
+            showAdminPanel(chatId, callbackQuery.from.id);
+            break;
+        // остальные кнопки...
+    }
+});
+
+function showLobbies(chatId) {
+    const keyboard = {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: `Лобби №1 (${lobbies["1"].length}/10)`, callback_data: 'lobby_1' }],
+                [{ text: `Лобби №2 (${lobbies["2"].length}/10)`, callback_data: 'lobby_2' }],
+                [{ text: `Лобби №3 (${lobbies["3"].length}/10)`, callback_data: 'lobby_3' }],
+                [{ text: `Лобби №4 (${lobbies["4"].length}/10)`, callback_data: 'lobby_4' }],
+                [{ text: `Лобби №5 (${lobbies["5"].length}/10)`, callback_data: 'lobby_5' }]
+            ]
+        }
+    };
+    bot.sendMessage(chatId, "Выберите лобби:", keyboard);
 }
 
-// ====== CALLBACKS ======
-bot.on("callback_query", async (query) => {
-  const chatId = query.message.chat.id;
-  const tgId = query.from.id;
-  const msgId = query.message.message_id;
+function showProfile(chatId) {
+    // Здесь нужно вытягивать данные из Supabase
+    const text = `🆔 TG: 6005466815\n👤 Никнейм: EcroMix\n...`;
+    bot.sendMessage(chatId, text);
+}
 
-  switch (query.data) {
-    case "find_match":
-      await deleteMessage(chatId, msgId);
-
-      // создаём новое лобби (если нет) и показываем список
-      bot.sendMessage(chatId, "🔎 Выберите лобби:", {
+function showAdminPanel(chatId, userId) {
+    const adminId = 6005466815;
+    if (userId !== adminId) return bot.sendMessage(chatId, "Доступ только для админа.");
+    const keyboard = {
         reply_markup: {
-          inline_keyboard: [
-            [{ text: "Лобби №1 (0/10)", callback_data: "lobby_1" }],
-            [{ text: "Лобби №2 (0/10)", callback_data: "lobby_2" }],
-            [{ text: "Лобби №3 (0/10)", callback_data: "lobby_3" }],
-            [{ text: "Лобби №4 (0/10)", callback_data: "lobby_4" }],
-            [{ text: "Лобби №5 (0/10)", callback_data: "lobby_5" }]
-          ]
-        }
-      });
-      break;
-
-    case "profile":
-      await deleteMessage(chatId, msgId);
-
-      try {
-        const user = await pool.query("SELECT * FROM users WHERE tg_id = $1", [tgId]);
-        const u = user.rows[0];
-
-        const profileText = `
-📌 *Профиль игрока*
-━━━━━━━━━━━━━━
-🆔 TG: ${u.tg_id}
-👤 Ник: ${u.nickname}
-⭐ ZF: ${u.zf || 0}
-🎮 Матчей: ${u.matches || 0}
-🏆 Побед: ${u.wins || 0}
-💔 Поражений: ${u.losses || 0}
-📈 W/R: ${u.wr || 0}%
-⚔️ K/D: ${u.kd || 0}
-🎯 AVG: ${u.avg || 0}
-⌛️ Регистрация: ${new Date(u.reg_date).toLocaleString("ru-RU")}
-`;
-
-        bot.sendMessage(chatId, profileText, {
-          parse_mode: "Markdown",
-          reply_markup: {
             inline_keyboard: [
-              [{ text: "📜 Прошлые игры", callback_data: "last_games" }],
-              [{ text: "🏠 Главное меню", callback_data: "main_menu" }]
+                [{ text: "Управление блокировкой", callback_data: "admin_block" }],
+                [{ text: "Управление матчами", callback_data: "admin_matches" }],
+                [{ text: "Логи", callback_data: "admin_logs" }],
+                [{ text: "Информация о пользователях", callback_data: "admin_users" }]
             ]
-          }
-        });
-      } catch (e) {
-        console.error("Ошибка профиля:", e.message);
-        bot.sendMessage(chatId, "❌ Ошибка загрузки профиля.");
-      }
-      break;
-
-    case "main_menu":
-      await deleteMessage(chatId, msgId);
-      sendMainMenu(chatId, tgId);
-      break;
-
-    case "admin_panel":
-      if (tgId != ADMIN_ID) {
-        return bot.answerCallbackQuery(query.id, { text: "⛔ Недоступно" });
-      }
-      await deleteMessage(chatId, msgId);
-      bot.sendMessage(chatId, "⚙️ *Админ панель*\nВыберите действие:", {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "🚫 Управление блокировкой", callback_data: "ban_manage" }],
-            [{ text: "🎮 Управление матчами", callback_data: "match_manage" }],
-            [{ text: "📑 Логи", callback_data: "logs" }],
-            [{ text: "👥 Информация о пользователях", callback_data: "users_info" }],
-            [{ text: "⬅️ Назад", callback_data: "main_menu" }]
-          ]
         }
-      });
-      break;
-
-    default:
-      bot.answerCallbackQuery(query.id, { text: "В разработке 🚧" });
-  }
-});
+    };
+    bot.sendMessage(chatId, "Админ панель. Выберите действия ниже:", keyboard);
+}
