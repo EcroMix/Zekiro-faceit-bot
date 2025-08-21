@@ -1,17 +1,18 @@
+const supabase = require("../config/database");
 
-import { supabase } from "../config/database.js";
+module.exports = (bot) => {
+  bot.onText(/\/register (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const username = match[1];
 
-export async function registerPlayer(bot, msg) {
-  const chatId = msg.chat.id;
-  const username = msg.from.username;
+    const { error } = await supabase
+      .from("users")
+      .insert([{ telegram_id: chatId, username }]);
 
-  const { error } = await supabase
-    .from("players")
-    .insert([{ telegram_id: chatId, username }]);
-
-  if (error) {
-    await bot.sendMessage(chatId, "Ошибка при регистрации ❌");
-  } else {
-    await bot.sendMessage(chatId, "Ты успешно зарегистрирован ✅");
-  }
-}
+    if (error) {
+      bot.sendMessage(chatId, "Ошибка при регистрации: " + error.message);
+    } else {
+      bot.sendMessage(chatId, `✅ Пользователь ${username} зарегистрирован!`);
+    }
+  });
+};

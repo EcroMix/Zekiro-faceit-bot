@@ -1,4 +1,5 @@
-export function createMatch(bot, msg) {
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, "Матч создан ⚔️");
-}
+module.exports = (bot) => {
+  bot.onText(/\/match/, (msg) => {
+    bot.sendMessage(msg.chat.id, "🎮 Матч создан!");
+  });
+};

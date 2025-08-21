@@ -1,4 +1,5 @@
-export function isAdmin(userId) {
-  const admins = [123456789]; // тут вставь свои ID админов
-  return admins.includes(userId);
+function isValidUsername(username) {
+  return /^[a-zA-Z0-9_]+$/.test(username);
 }
+
+module.exports = { isValidUsername };

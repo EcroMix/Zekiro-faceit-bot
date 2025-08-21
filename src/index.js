@@ -1,22 +1,31 @@
+require('dotenv').config(); // обязательно загружаем .env
 
-import TelegramBot from "node-telegram-bot-api";
-import express from "express";
-import dotenv from "dotenv";
-import { supabase } from "./config/database.js";
+const TelegramBot = require("node-telegram-bot-api");
+const express = require("express");
+const registrationHandler = require("./handlers/registration");
+const lobbyHandler = require("./handlers/lobby");
+const matchesHandler = require("./handlers/matches");
+const adminHandler = require("./handlers/admin");
 
-dotenv.config();
+const token = process.env.BOT_TOKEN;
+if (!token) {
+  throw new Error("BOT_TOKEN is missing in .env");
+}
 
-// Telegram bot init
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
-
-// Express server (для Render)
+const bot = new TelegramBot(token, { polling: true });
 const app = express();
-const PORT = process.env.PORT || 3000;
-app.get("/", (req, res) => res.send("Bot is running"));
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-// Test command
-bot.onText(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  await bot.sendMessage(chatId, "Привет! Faceit бот запущен 🚀");
+// подключаем хендлеры
+registrationHandler(bot);
+lobbyHandler(bot);
+matchesHandler(bot);
+adminHandler(bot);
+
+app.get("/", (req, res) => {
+  res.send("Bot is running");
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

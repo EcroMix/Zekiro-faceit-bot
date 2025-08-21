@@ -1,4 +1,5 @@
-export function createLobby(bot, msg) {
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, "Лобби создано 🎮");
-}
+module.exports = (bot) => {
+  bot.onText(/\/lobby/, (msg) => {
+    bot.sendMessage(msg.chat.id, "📢 Лобби создано!");
+  });
+};

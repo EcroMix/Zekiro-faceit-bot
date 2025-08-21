@@ -1,3 +1,5 @@
-export function formatUsername(username) {
-  return username ? `@${username}` : "Без ника";
+function formatUsername(username) {
+  return username.trim().toLowerCase();
 }
+
+module.exports = { formatUsername };

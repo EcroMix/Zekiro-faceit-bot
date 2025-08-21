@@ -1,4 +1,6 @@
-export function banPlayer(bot, msg) {
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, "Игрок забанен 🚫");
-}
+module.exports = (bot) => {
+  bot.onText(/\/ban (.+)/, (msg, match) => {
+    const username = match[1];
+    bot.sendMessage(msg.chat.id, `🚫 Пользователь ${username} забанен!`);
+  });
+};
