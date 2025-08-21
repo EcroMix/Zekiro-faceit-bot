@@ -33,21 +33,24 @@ bot.onText(/\/start/, async (msg) => {
   const tgId = msg.from.id;
   const nickname = msg.from.username || msg.from.first_name;
 
-  // Проверим регистрацию
-  const user = await pool.query("SELECT * FROM users WHERE tg_id = $1", [tgId]);
+  try {
+    const user = await pool.query("SELECT * FROM users WHERE tg_id = $1", [tgId]);
 
-  if (user.rows.length === 0) {
-    await pool.query(
-      "INSERT INTO users (tg_id, nickname, reg_date) VALUES ($1,$2,NOW())",
-      [tgId, nickname]
-    );
-    bot.sendMessage(chatId, `✅ Вы успешно зарегистрированы как *${nickname}*`, {
-      parse_mode: "Markdown"
-    });
+    if (user.rows.length === 0) {
+      await pool.query(
+        "INSERT INTO users (tg_id, nickname, reg_date) VALUES ($1,$2,NOW())",
+        [tgId, nickname]
+      );
+      bot.sendMessage(chatId, `✅ Вы успешно зарегистрированы как *${nickname}*`, {
+        parse_mode: "Markdown"
+      });
+    }
+
+    sendMainMenu(chatId, tgId);
+  } catch (e) {
+    console.error("Ошибка регистрации:", e.message);
+    bot.sendMessage(chatId, "❌ Ошибка регистрации. Попробуйте позже.");
   }
-
-  // Выбор действий
-  sendMainMenu(chatId, tgId);
 });
 
 // ====== ГЛАВНОЕ МЕНЮ ======
@@ -66,7 +69,6 @@ function sendMainMenu(chatId, tgId) {
     ]
   };
 
-  // Админ панель
   if (tgId == ADMIN_ID) {
     keyboard.inline_keyboard.push([
       { text: "⚙️ Панель администратора", callback_data: "admin_panel" }
@@ -87,6 +89,8 @@ bot.on("callback_query", async (query) => {
   switch (query.data) {
     case "find_match":
       await deleteMessage(chatId, msgId);
+
+      // создаём новое лобби (если нет) и показываем список
       bot.sendMessage(chatId, "🔎 Выберите лобби:", {
         reply_markup: {
           inline_keyboard: [
@@ -103,10 +107,11 @@ bot.on("callback_query", async (query) => {
     case "profile":
       await deleteMessage(chatId, msgId);
 
-      const user = await pool.query("SELECT * FROM users WHERE tg_id = $1", [tgId]);
-      const u = user.rows[0];
+      try {
+        const user = await pool.query("SELECT * FROM users WHERE tg_id = $1", [tgId]);
+        const u = user.rows[0];
 
-      const profileText = `
+        const profileText = `
 📌 *Профиль игрока*
 ━━━━━━━━━━━━━━
 🆔 TG: ${u.tg_id}
@@ -121,15 +126,19 @@ bot.on("callback_query", async (query) => {
 ⌛️ Регистрация: ${new Date(u.reg_date).toLocaleString("ru-RU")}
 `;
 
-      bot.sendMessage(chatId, profileText, {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "📜 Прошлые игры", callback_data: "last_games" }],
-            [{ text: "🏠 Главное меню", callback_data: "main_menu" }]
-          ]
-        }
-      });
+        bot.sendMessage(chatId, profileText, {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "📜 Прошлые игры", callback_data: "last_games" }],
+              [{ text: "🏠 Главное меню", callback_data: "main_menu" }]
+            ]
+          }
+        });
+      } catch (e) {
+        console.error("Ошибка профиля:", e.message);
+        bot.sendMessage(chatId, "❌ Ошибка загрузки профиля.");
+      }
       break;
 
     case "main_menu":
