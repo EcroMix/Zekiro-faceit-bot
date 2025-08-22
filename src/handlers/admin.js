@@ -14,7 +14,7 @@ module.exports = function adminHandler(bot) {
     const chatId = msg.chat.id;
     if (chatId != 6005466815) return;
 
-    const [nickname, reason] = match[1].split(", ");
+    const [nickname] = match[1].split(", ");
     await supabase.from("bans").delete().eq("nickname", nickname);
     bot.sendMessage(chatId, `Игрок ${nickname} разблокирован`);
   });

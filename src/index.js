@@ -1,6 +1,7 @@
 const express = require("express");
 const TelegramBot = require("node-telegram-bot-api");
 require("dotenv").config();
+
 const registrationHandler = require("./handlers/registration");
 const lobbyHandler = require("./handlers/lobby");
 const matchesHandler = require("./handlers/matches");
@@ -15,10 +16,10 @@ const PORT = process.env.PORT || 10000;
 
 const bot = new TelegramBot(BOT_TOKEN);
 
-// Настройка Webhook
+// Настройка webhook
 bot.setWebHook(`${APP_URL}/bot${BOT_TOKEN}`);
 
-// Express endpoint для Telegram
+// Endpoint для Telegram
 app.post(`/bot${BOT_TOKEN}`, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
