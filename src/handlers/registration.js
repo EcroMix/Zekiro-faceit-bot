@@ -1,18 +1,31 @@
 const supabase = require("../config/database");
 
-module.exports = (bot) => {
-  bot.onText(/\/register (.+)/, async (msg, match) => {
+module.exports = function registrationHandler(bot) {
+  bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
-    const username = match[1];
 
-    const { error } = await supabase
-      .from("users")
-      .insert([{ telegram_id: chatId, username }]);
+    // Сообщение регистрации
+    const regMsg = await bot.sendMessage(chatId, "Привет! Введите свой игровой никнейм:");
 
-    if (error) {
-      bot.sendMessage(chatId, "Ошибка при регистрации: " + error.message);
-    } else {
-      bot.sendMessage(chatId, `✅ Пользователь ${username} зарегистрирован!`);
-    }
+    // Ожидаем никнейм
+    bot.once("message", async (reply) => {
+      const nickname = reply.text;
+
+      await bot.sendMessage(chatId, "Введите ваш ID игры:");
+      bot.once("message", async (reply2) => {
+        const gameId = reply2.text;
+
+        // Сохраняем в Supabase
+        const { error } = await supabase.from("users").insert([
+          { chat_id: chatId, nickname, game_id: gameId },
+        ]);
+
+        if (error) {
+          bot.sendMessage(chatId, "Ошибка при регистрации. Попробуйте позже.");
+        } else {
+          bot.sendMessage(chatId, "Вы успешно зарегистрированы!");
+        }
+      });
+    });
   });
 };

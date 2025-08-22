@@ -1,1 +1,3 @@
-// Здесь можно описать модели таблиц Supabase
+// Просто экспортируем supabase клиент
+const supabase = require("../config/database");
+module.exports = supabase;

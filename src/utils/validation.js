@@ -1,5 +1,4 @@
-function isValidUsername(username) {
-  return /^[a-zA-Z0-9_]+$/.test(username);
-}
-
-module.exports = { isValidUsername };
+module.exports = {
+  isValidNickname: (nickname) => typeof nickname === "string" && nickname.length >= 3,
+  isValidGameId: (id) => !isNaN(Number(id)) && id.length >= 5,
+};

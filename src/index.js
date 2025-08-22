@@ -1,53 +1,36 @@
-require('dotenv').config();
-const express = require('express');
-const bodyParser = require('body-parser');
-const TelegramBot = require('node-telegram-bot-api');
+const express = require("express");
+const TelegramBot = require("node-telegram-bot-api");
+require("dotenv").config();
+const registrationHandler = require("./handlers/registration");
+const lobbyHandler = require("./handlers/lobby");
+const matchesHandler = require("./handlers/matches");
+const adminHandler = require("./handlers/admin");
 
-// Хендлеры
-const registrationHandler = require('./handlers/registration');
-const lobbyHandler = require('./handlers/lobby');
-const matchesHandler = require('./handlers/matches');
-const adminHandler = require('./handlers/admin');
-
-const token = process.env.BOT_TOKEN;
-if (!token) throw new Error("BOT_TOKEN is missing in .env");
-
-const bot = new TelegramBot(token); // без polling
-
-// Express
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json());
 
-// Проверка переменных Render
-const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
-if (!RENDER_URL) throw new Error("RENDER_EXTERNAL_URL is missing in .env");
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const APP_URL = process.env.APP_URL;
+const PORT = process.env.PORT || 10000;
 
-// Путь webhook
-const webhookPath = `/webhook/${token}`;
-const webhookURL = `https://${RENDER_URL}${webhookPath}`;
+const bot = new TelegramBot(BOT_TOKEN);
 
-// Установка webhook
-bot.setWebHook(webhookURL)
-  .then(() => console.log('✅ Webhook установлен:', webhookURL))
-  .catch(console.error);
+// Настройка Webhook
+bot.setWebHook(`${APP_URL}/bot${BOT_TOKEN}`);
 
-// Endpoint Telegram
-app.post(webhookPath, (req, res) => {
+// Express endpoint для Telegram
+app.post(`/bot${BOT_TOKEN}`, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
 
-// Тестовая страница
-app.get('/', (req, res) => {
-  res.send('Bot is running via webhook 🚀');
-});
-
-// Подключаем хендлеры
+// Подключаем обработчики
 registrationHandler(bot);
 lobbyHandler(bot);
 matchesHandler(bot);
 adminHandler(bot);
 
 // Старт сервера
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Bot listening on port ${PORT}`);
+});
