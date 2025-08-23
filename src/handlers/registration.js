@@ -1,16 +1,18 @@
-import { createUser, getUserByTelegramId } from "../models/database.js";
+import { getUserByTelegramId, createUser } from '../models/database.js';
 
-export async function registerUser(bot, msg) {
-  const chatId = msg.chat.id;
-  const username = msg.from.username || "NoName";
-  const telegramId = msg.from.id;
+export default async function registrationHandler(update, chatId) {
+  if (!update.message || !update.message.text) return;
 
-  let user = await getUserByTelegramId(telegramId);
+  const text = update.message.text;
 
-  if (!user) {
-    await createUser(telegramId, username);
-    bot.sendMessage(chatId, `✅ Добро пожаловать, ${username}! Ты зарегистрирован.`);
-  } else {
-    bot.sendMessage(chatId, `⚡ Привет, ${username}! Ты уже есть в базе.`);
+  if (text === '/start') {
+    // Приветствие и регистрация
+    // Здесь можно отправить сообщение с Telegram Bot API
+    console.log(`User ${chatId} нажал /start`);
+    // Реально нужно использовать fetch для Telegram API sendMessage
   }
+
+  // Пример регистрации по никнейму и ID
+  // const user = await getUserByTelegramId(chatId);
+  // if (!user) await createUser(chatId, text);
 }

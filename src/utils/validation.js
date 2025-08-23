@@ -1,3 +1,1 @@
-export const isValidID = (id) => {
-  return !isNaN(parseInt(id)) && id > 0;
-};
+export const isValidUsername = (username) => typeof username === 'string' && username.length > 2;
