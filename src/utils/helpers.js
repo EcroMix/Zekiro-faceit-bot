@@ -1,3 +1,3 @@
-export function formatDate(date) {
+export const formatDate = (date) => {
   return new Date(date).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
-}
+};

@@ -1,33 +1,22 @@
-import dotenv from 'dotenv';
-dotenv.config();
-
 import express from 'express';
 import { Telegraf } from 'telegraf';
+import dotenv from 'dotenv';
 import { handleRegistration } from './handlers/registration.js';
 
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+dotenv.config();
+
 const app = express();
+const bot = new Telegraf(process.env.BOT_TOKEN);
+
+bot.start(handleRegistration);
+
+app.use(express.json());
+app.post(`/bot${process.env.BOT_TOKEN}`, (req, res) => {
+  bot.handleUpdate(req.body, res);
+  res.sendStatus(200);
+});
+
+app.get('/', (req, res) => res.send('Bot is running'));
 
 const PORT = process.env.PORT || 3000;
-const WEBHOOK_URL = process.env.APP_URL + '/bot' + process.env.TELEGRAM_BOT_TOKEN;
-
-// Регистрация стартового хендлера
-bot.start(async (ctx) => {
-  await handleRegistration(ctx);
-});
-
-// Устанавливаем webhook
-bot.telegram.setWebhook(WEBHOOK_URL);
-
-// Пробрасываем обновления через Express
-app.use(bot.webhookCallback('/bot' + process.env.TELEGRAM_BOT_TOKEN));
-
-// Тестовый root
-app.get('/', (req, res) => {
-  res.send('Бот работает через вебхук!');
-});
-
-// Запуск сервера
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

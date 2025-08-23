@@ -1,3 +1,3 @@
-export function isValidTelegramId(id) {
-  return typeof id === 'number' && id > 0;
-}
+export const isValidID = (id) => {
+  return !isNaN(parseInt(id)) && id > 0;
+};

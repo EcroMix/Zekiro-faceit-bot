@@ -1,19 +1,29 @@
-import { createUser, getUserByTelegramId } from '../models/database.js';
+import { Users } from '../models/database.js';
+import { Markup } from 'telegraf';
 
-export async function handleRegistration(ctx) {
-  const telegramId = ctx.from.id;
-  const username = ctx.from.username;
-
-  const existingUser = await getUserByTelegramId(telegramId);
-  if (existingUser) {
-    return ctx.reply('Вы уже зарегистрированы.');
-  }
-
+export const handleRegistration = async (ctx) => {
   try {
-    await createUser(telegramId, username);
-    return ctx.reply(`Регистрация успешна! Ваш никнейм: ${username}`);
+    const user = ctx.from;
+
+    const { data, error } = await Users().select().eq('telegram_id', user.id);
+    if (error) throw error;
+
+    if (data.length === 0) {
+      await Users().insert({
+        telegram_id: user.id,
+        username: user.username || user.first_name
+      });
+    }
+
+    await ctx.reply(`Привет, ${user.first_name}! Выберите действие:`, Markup.inlineKeyboard([
+      [Markup.button.callback('Найти матч', 'find_match')],
+      [Markup.button.callback('Профиль', 'profile')],
+      [Markup.button.callback('Рейтинг игроков', 'rating')],
+      [Markup.button.callback('Команды', 'teams')],
+      [Markup.button.callback('Создать тикет', 'ticket')]
+    ]));
   } catch (err) {
     console.error(err);
-    return ctx.reply('Ошибка при регистрации. Попробуйте позже.');
+    await ctx.reply('Ошибка при регистрации. Попробуйте позже.');
   }
-}
+};
