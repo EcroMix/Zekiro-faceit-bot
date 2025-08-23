@@ -1,16 +1,11 @@
-const supabase = require("../config/database");
+import { addMatch } from '../models/database.js';
 
-module.exports = function matchesHandler(bot) {
-  bot.onText(/\/addmatch (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    if (chatId != 6005466815) return;
-
-    const matchesData = match[1].split("\n");
-    for (let line of matchesData) {
-      const [nickname, result, kills, deaths] = line.split(" - ");
-      await supabase.from("matches").insert([{ nickname, result, kills, deaths }]);
-    }
-
-    bot.sendMessage(chatId, "Матчи добавлены!");
-  });
-};
+export async function handleAddMatch(ctx, player1_id, player2_id, score) {
+  try {
+    const match = await addMatch(player1_id, player2_id, score);
+    return ctx.reply(`Матч добавлен! ID: ${match.rows[0].id}`);
+  } catch (err) {
+    console.error(err);
+    return ctx.reply('Ошибка при добавлении матча.');
+  }
+}

@@ -1,21 +1,23 @@
-const supabase = require("../config/database");
+import { addBan, addWarning, addLog } from '../models/database.js';
 
-module.exports = function adminHandler(bot) {
-  bot.onText(/\/ban (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    if (chatId != 6005466815) return;
+export async function handleBanUser(ctx, userId, reason, expiresAt) {
+  try {
+    await addBan(userId, reason, expiresAt);
+    await addLog(`User ${userId} banned for ${reason}`);
+    return ctx.reply(`Пользователь ${userId} забанен!`);
+  } catch (err) {
+    console.error(err);
+    return ctx.reply('Ошибка при бане пользователя.');
+  }
+}
 
-    const [nickname, duration, reason] = match[1].split(", ");
-    await supabase.from("bans").insert([{ nickname, duration, reason }]);
-    bot.sendMessage(chatId, `Игрок ${nickname} заблокирован на ${duration}: ${reason}`);
-  });
-
-  bot.onText(/\/unban (.+)/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    if (chatId != 6005466815) return;
-
-    const [nickname] = match[1].split(", ");
-    await supabase.from("bans").delete().eq("nickname", nickname);
-    bot.sendMessage(chatId, `Игрок ${nickname} разблокирован`);
-  });
-};
+export async function handleWarning(ctx, userId, reason) {
+  try {
+    await addWarning(userId, reason);
+    await addLog(`Warning issued to ${userId} for ${reason}`);
+    return ctx.reply(`Пользователь ${userId} получил предупреждение.`);
+  } catch (err) {
+    console.error(err);
+    return ctx.reply('Ошибка при выдаче предупреждения.');
+  }
+}

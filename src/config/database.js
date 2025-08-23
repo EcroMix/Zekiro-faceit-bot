@@ -1,11 +1,21 @@
-const { createClient } = require("@supabase/supabase-js");
+import pg from 'pg';
+import dotenv from 'dotenv';
+dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
+const { Pool } = pg;
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Supabase URL and Key are required in environment variables.");
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+pool.on('connect', () => {
+  console.log('Connected to the database.');
+});
+
+export async function query(text, params) {
+  const start = Date.now();
+  const res = await pool.query(text, params);
+  const duration = Date.now() - start;
+  console.log('executed query', { text, duration, rows: res.rowCount });
+  return res;
 }
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-module.exports = supabase;

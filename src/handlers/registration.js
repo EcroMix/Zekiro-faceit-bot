@@ -1,28 +1,19 @@
-const supabase = require("../config/database");
+import { createUser, getUserByTelegramId } from '../models/database.js';
 
-module.exports = function registrationHandler(bot) {
-  bot.onText(/\/start/, async (msg) => {
-    const chatId = msg.chat.id;
+export async function handleRegistration(ctx) {
+  const telegramId = ctx.from.id;
+  const username = ctx.from.username;
 
-    const regMsg = await bot.sendMessage(chatId, "Привет! Введите свой игровой никнейм:");
+  const existingUser = await getUserByTelegramId(telegramId);
+  if (existingUser) {
+    return ctx.reply('Вы уже зарегистрированы.');
+  }
 
-    bot.once("message", async (reply) => {
-      const nickname = reply.text;
-
-      await bot.sendMessage(chatId, "Введите ваш ID игры:");
-      bot.once("message", async (reply2) => {
-        const gameId = reply2.text;
-
-        const { error } = await supabase.from("users").insert([
-          { chat_id: chatId, nickname, game_id: gameId },
-        ]);
-
-        if (error) {
-          bot.sendMessage(chatId, "Ошибка при регистрации. Попробуйте позже.");
-        } else {
-          bot.sendMessage(chatId, "Вы успешно зарегистрированы!");
-        }
-      });
-    });
-  });
-};
+  try {
+    await createUser(telegramId, username);
+    return ctx.reply(`Регистрация успешна! Ваш никнейм: ${username}`);
+  } catch (err) {
+    console.error(err);
+    return ctx.reply('Ошибка при регистрации. Попробуйте позже.');
+  }
+}

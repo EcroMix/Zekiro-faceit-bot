@@ -1,37 +1,33 @@
-const express = require("express");
-const TelegramBot = require("node-telegram-bot-api");
-require("dotenv").config();
+import dotenv from 'dotenv';
+dotenv.config();
 
-const registrationHandler = require("./handlers/registration");
-const lobbyHandler = require("./handlers/lobby");
-const matchesHandler = require("./handlers/matches");
-const adminHandler = require("./handlers/admin");
+import express from 'express';
+import { Telegraf } from 'telegraf';
+import { handleRegistration } from './handlers/registration.js';
 
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const app = express();
-app.use(express.json());
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const APP_URL = process.env.APP_URL;
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
+const WEBHOOK_URL = process.env.APP_URL + '/bot' + process.env.TELEGRAM_BOT_TOKEN;
 
-const bot = new TelegramBot(BOT_TOKEN);
-
-// Настройка webhook
-bot.setWebHook(`${APP_URL}/bot${BOT_TOKEN}`);
-
-// Endpoint для Telegram
-app.post(`/bot${BOT_TOKEN}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
+// Регистрация стартового хендлера
+bot.start(async (ctx) => {
+  await handleRegistration(ctx);
 });
 
-// Подключаем обработчики
-registrationHandler(bot);
-lobbyHandler(bot);
-matchesHandler(bot);
-adminHandler(bot);
+// Устанавливаем webhook
+bot.telegram.setWebhook(WEBHOOK_URL);
 
-// Старт сервера
+// Пробрасываем обновления через Express
+app.use(bot.webhookCallback('/bot' + process.env.TELEGRAM_BOT_TOKEN));
+
+// Тестовый root
+app.get('/', (req, res) => {
+  res.send('Бот работает через вебхук!');
+});
+
+// Запуск сервера
 app.listen(PORT, () => {
-  console.log(`Bot listening on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
