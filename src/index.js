@@ -1,32 +1,62 @@
-import TelegramBot from "node-telegram-bot-api";
-import express from "express";
-import dotenv from "dotenv";
+import express from 'express';
+import { config } from 'dotenv';
+config();
 
-import { registerUser } from "./handlers/registration.js";
-import { handleMatch } from "./handlers/matches.js";
-import { handleLobby } from "./handlers/lobbies.js";
-import { handleTicket } from "./handlers/tickets.js";
-import { handleWarning } from "./handlers/warnings.js";
-import { handleBan } from "./handlers/bans.js";
-import { handleAdmin } from "./handlers/admin.js";
+import { supabase } from './config/database.js';
 
-dotenv.config();
+import registrationHandler from './handlers/registration.js';
+import lobbyHandler from './handlers/lobbies.js';
+import matchesHandler from './handlers/matches.js';
+import adminHandler from './handlers/admin.js';
+import bansHandler from './handlers/bans.js';
+import ticketsHandler from './handlers/tickets.js';
+import warningsHandler from './handlers/warnings.js';
 
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const app = express();
+app.use(express.json());
 
-app.get("/", (req, res) => {
-  res.send("Bot is running ✅");
+// --- Роут для Telegram webhook ---
+app.post(`/bot${process.env.BOT_TOKEN}`, async (req, res) => {
+  const update = req.body;
+
+  // Тут вызываем разные хэндлеры в зависимости от типа update
+  try {
+    if (update.message) {
+      const msg = update.message;
+      // регистрация
+      await registrationHandler(msg, supabase);
+      // другие обработчики (при необходимости)
+      await lobbyHandler(msg, supabase);
+      await matchesHandler(msg, supabase);
+      await adminHandler(msg, supabase);
+      await bansHandler(msg, supabase);
+      await ticketsHandler(msg, supabase);
+      await warningsHandler(msg, supabase);
+    } else if (update.callback_query) {
+      const query = update.callback_query;
+      // обработка нажатий inline кнопок
+      await lobbyHandler(query, supabase, true);
+      await matchesHandler(query, supabase, true);
+      await adminHandler(query, supabase, true);
+      await bansHandler(query, supabase, true);
+      await ticketsHandler(query, supabase, true);
+      await warningsHandler(query, supabase, true);
+    }
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('Ошибка при обработке update:', err);
+    res.sendStatus(500);
+  }
 });
 
-// Хендлеры
-bot.onText(/\/start/, (msg) => registerUser(bot, msg));
-bot.onText(/\/match/, (msg) => handleMatch(bot, msg));
-bot.onText(/\/lobby/, (msg) => handleLobby(bot, msg));
-bot.onText(/\/ticket/, (msg) => handleTicket(bot, msg));
-bot.onText(/\/warn/, (msg) => handleWarning(bot, msg));
-bot.onText(/\/ban/, (msg) => handleBan(bot, msg));
-bot.onText(/\/admin/, (msg) => handleAdmin(bot, msg));
+// --- Роут для проверки работы сервера ---
+app.get('/', (req, res) => {
+  res.send('Zekiro Faceit Bot is running!');
+});
 
+// --- Запуск сервера ---
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server started on port ${PORT}`);
+});
