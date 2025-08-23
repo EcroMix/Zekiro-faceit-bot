@@ -1,7 +1,9 @@
-import { Matches } from '../models/database.js';
+import { createMatch } from "../models/database.js";
 
-export const addMatch = async (matchData) => {
-  const { data, error } = await Matches().insert(matchData);
-  if (error) throw error;
-  return data;
-};
+export async function handleMatch(bot, msg) {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, "⚔️ Матч создан (заглушка, тут будет логика поиска игроков).");
+
+  // Пример:
+  // await createMatch(player1_id, player2_id);
+}

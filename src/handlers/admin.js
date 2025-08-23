@@ -1,17 +1,19 @@
-import { Bans, Logs, Users } from '../models/database.js';
+import { addLog, getLogs } from "../models/database.js";
 
-export const banUser = async (telegramId, reason, expiresAt) => {
-  const { data, error } = await Bans().insert({
-    user_id: telegramId,
-    reason,
-    expires_at: expiresAt
-  });
-  if (error) throw error;
+export async function handleAdmin(bot, msg) {
+  const chatId = msg.chat.id;
 
-  await Logs().insert({
-    action: `Забанен пользователь ${telegramId}: ${reason}`,
-    user_id: telegramId
-  });
+  if (msg.from.id.toString() !== process.env.ADMIN_TG_ID) {
+    bot.sendMessage(chatId, "❌ Ты не админ.");
+    return;
+  }
 
-  return data;
-};
+  await addLog("Админ зашел в панель", msg.from.id);
+
+  const { data: logs } = await getLogs(5);
+  let text = "🛠 Последние действия:\n";
+  if (logs) {
+    text += logs.map(l => `• ${l.action} (${l.created_at})`).join("\n");
+  }
+  bot.sendMessage(chatId, text);
+}
