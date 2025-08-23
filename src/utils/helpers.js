@@ -1,11 +1,7 @@
-export const sendMessage = async (chat_id, text, reply_markup = null) => {
-  const url = `https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`;
-  const body = { chat_id, text };
-  if (reply_markup) body.reply_markup = reply_markup;
+export function formatDate(date) {
+  return new Date(date).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" });
+}
 
-  await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-};
+export function isAdmin(userId) {
+  return userId.toString() === process.env.ADMIN_TG_ID;
+}
